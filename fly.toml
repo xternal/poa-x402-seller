@@ -1,0 +1,38 @@
+# poa-x402-seller on Fly.io. Exactly ONE machine: the ledger that makes retries safe (and stops
+# one payment buying two calls) is a file on this machine's volume. Deploy with --ha=false.
+app = "poa-x402-seller"
+primary_region = "lhr"
+
+[env]
+  SELLER_PORT = "8080"
+  SELLER_LEDGER = "/data/seller-ledger.json"
+  SELLER_RECEIPTS_FILE = "/data/seller-receipts.jsonl"
+  SELLER_PRICE_ATOMIC = "1000"        # 0.001 USDC
+  SELLER_MAX_TIMEOUT = "180"
+  SELLER_SETTLE_MODE = "self"
+  SELLER_TRUST_PROXY = "fly"          # rate-limit by Fly-Client-IP, not the proxy's address
+  SELLER_RATE_PER_MIN = "60"
+  # SELLER_PUBLIC_URL defaults to https://$FLY_APP_NAME.fly.dev
+  # SELLER_PRIVATE_KEY is a secret: fly secrets set SELLER_PRIVATE_KEY=0x…
+
+[[mounts]]
+  source = "seller_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"         # idle → stopped, ~$0 compute; first request wakes it
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/livez"                   # no chain calls: a POA deploy window must not restart us
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

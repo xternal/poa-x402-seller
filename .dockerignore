@@ -1,0 +1,6 @@
+# Allowlist: the image gets the server and its lockfile, nothing else — above all no .env.
+*
+!package.json
+!package-lock.json
+!seller.mjs
+!seller-lib.mjs

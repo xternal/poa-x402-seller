@@ -1,0 +1,14 @@
+{
+  "name": "poa-x402-seller",
+  "version": "1.0.0",
+  "private": true,
+  "description": "An x402-gated paid tool server (HTTP + MCP) on POA chain 77. Self-settles to the precompile; no facilitator, no account, one key.",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node seller.mjs",
+    "keygen": "node seller-keygen.mjs",
+    "test": "node test-seller.mjs"
+  },
+  "dependencies": { "viem": "2.56.5" }
+}
