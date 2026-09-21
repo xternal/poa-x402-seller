@@ -1,5 +1,8 @@
 # poa-x402-seller
 
+**Live: https://poa-x402-seller.fly.dev** — 0.001 USDC per call on POA chain 77.
+Operating it: [RUNBOOK.md](RUNBOOK.md).
+
 A **paid tool server** on POA chain 77 (`eip155:77`). Every call costs a toll in native USDC,
 paid with [x402](https://x402.org): no accounts, no API keys — the payment *is* the
 authentication. Reachable as plain HTTP and as an **MCP tool** over Streamable HTTP, so an agent
@@ -27,6 +30,19 @@ client ──GET + PAYMENT-SIGNATURE──▶ seller ── checks, then transfe
 
 The entire dependency list for selling on this chain is one key and an RPC URL. A brand-new key
 with no balance collects its first payment.
+
+## Try it — pay it from your machine
+
+`pay.mjs` is a one-file client (only needs `viem`) that pays any POA x402 seller, and refuses a
+quote it can't price honestly or that costs more than `--max`:
+
+```bash
+npm i viem
+node pay.mjs --quote                          # what the live seller asks — no key, no money
+node pay.mjs --keygen                         # a fresh key; get its address funded with a few cents
+PAYER_PRIVATE_KEY=0x… node pay.mjs            # pay 0.001 USDC, get a notarization back
+node verify-notarization.mjs proof.json       # check what you bought, against the chain
+```
 
 ## Run it
 

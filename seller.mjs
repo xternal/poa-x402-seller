@@ -129,9 +129,10 @@ async function collect(header, url, request) {
   }).catch(() => null);
   if (!signer || signer.toLowerCase() !== auth.from.toLowerCase()) return { reason: 'invalid_signature', payer: signer };
 
-  // 3. From here on: one at a time.
+  // 3. From here on: one at a time. Everything past this point concerns an authorization that
+  //    really was signed by `from` — the only kind of refusal worth a receipt (see the handler).
   const key = `${auth.from.toLowerCase()}:${auth.nonce.toLowerCase()}`;
-  return serial(() => settle(payload, req, key, request));
+  return { ...(await serial(() => settle(payload, req, key, request))), authenticated: true };
 }
 
 async function settle(payload, req, key, request) {
@@ -280,9 +281,24 @@ const server = createServer(async (req, res) => {
     if (wait) { res.writeHead(429, { 'content-type': 'application/json', 'Retry-After': String(wait) });
       return res.end(JSON.stringify({ error: 'rate_limited', retryAfterSeconds: wait })); }
 
-    if (u.pathname === '/health') return json(res, 200, { ok: true, chainId: CHAIN_ID, block: await blockNumber(),
-      payTo: account.address, balance: formatUnits(await balanceOf(account.address), WIRE_DECIMALS),
-      priceAtomic: PRICE.toString(), settleMode: MODE, sales: Object.keys(ledger).length });
+    // What an operator (and monitor.mjs) needs: is the seller itself fine, is POA reachable —
+    // reported separately, because a POA deploy window is not our outage — and is anything
+    // stuck in settlement_pending.
+    if (u.pathname === '/health') {
+      const entries = Object.values(ledger);
+      const pending = entries.filter((e) => e.status === 'pending');
+      const oldest = pending.reduce((a, e) => Math.min(a, Date.parse(e.signedAt) || Date.now()), Date.now());
+      const base = { payTo: account.address, priceAtomic: PRICE.toString(), settleMode: MODE,
+        sales: entries.filter((e) => (e.status ?? 'settled') === 'settled').length,
+        pending: pending.length, oldestPendingSeconds: pending.length ? Math.round((Date.now() - oldest) / 1000) : 0,
+        uptimeSeconds: Math.round(process.uptime()), image: process.env.FLY_IMAGE_REF ?? null };
+      try {
+        return json(res, 200, { ok: true, chainId: CHAIN_ID, block: await blockNumber(),
+          balance: formatUnits(await balanceOf(account.address), WIRE_DECIMALS), ...base });
+      } catch (e) {
+        return json(res, 503, { ok: false, chainId: CHAIN_ID, chainError: String(e.message).slice(0, 200), ...base });
+      }
+    }
 
     if (u.pathname === '/' ) return json(res, 200, { service: 'poa-x402-notary',
       price: `${Number(PRICE) / 10 ** ATOMIC_DECIMALS} USDC per call`, network: `eip155:${CHAIN_ID}`, payTo: account.address,
@@ -302,7 +318,11 @@ const server = createServer(async (req, res) => {
       const paid = await collect(req.headers['payment-signature'], resourceUrl, request);
       if (!paid.ok) {
         log(`402 /notarize — ${paid.reason}${paid.tx ? ' ' + paid.tx.slice(0, 18) + '…' : ''}`);
-        await sellerReceipt(account, paid.pending ? 'pending' : 'refused', { tool: 'notarize', transport: 'http', resource: resourceUrl, priceAtomic: PRICE.toString() },
+        // Receipts only for payment attempts whose signature checked out. A price check, garbage,
+        // or an unsigned claim gets a 402 and a log line but no disk write: on a public server
+        // anyone can send those, and a receipt per request would let them fill the volume the
+        // ledger lives on — and a seller that can't write its ledger can't record a sale.
+        if (paid.authenticated) await sellerReceipt(account, paid.pending ? 'pending' : 'refused', { tool: 'notarize', transport: 'http', resource: resourceUrl, priceAtomic: PRICE.toString() },
           { served: false, reason: paid.reason, payer: paid.payer ?? null, tx: paid.tx ?? null });
         return challenge(res, resourceUrl, paid.reason, paid);
       }
@@ -320,9 +340,22 @@ const server = createServer(async (req, res) => {
   }
 });
 
+// The process must outlive POA. The host wakes this machine on demand; if that lands in a POA
+// deploy window (the write path was down ~1h on 20 Sep 2026), a crash here means a crash loop,
+// a dark /livez, and pending settlements nobody can resolve. Chain calls at boot are
+// informational; anything unexpected later is logged, not fatal — every request path already
+// answers its own errors.
+process.on('unhandledRejection', (e) => log('✗ unhandled', e?.message ?? e));
+
 server.listen(PORT, async () => {
   log(`seller  ${account.address}`);
-  log(`payTo   ${account.address}  balance ${formatUnits(await balanceOf(account.address), WIRE_DECIMALS)} USDC`);
-  log(`price   ${PRICE} atomic = ${Number(PRICE) / 10 ** ATOMIC_DECIMALS} USDC · settle=${MODE} · chain ${CHAIN_ID} @ ${await blockNumber()}`);
+  try {
+    log(`payTo   ${account.address}  balance ${formatUnits(await balanceOf(account.address), WIRE_DECIMALS)} USDC`);
+    log(`price   ${PRICE} atomic = ${Number(PRICE) / 10 ** ATOMIC_DECIMALS} USDC · settle=${MODE} · chain ${CHAIN_ID} @ ${await blockNumber()}`);
+  } catch (e) {
+    log(`⚠ POA RPC unreachable at boot (${e.message}) — serving anyway; payments will answer 5xx/pending until it returns`);
+  }
+  const pending = Object.values(ledger).filter((e) => e.status === 'pending').length;
+  if (pending) log(`⚠ ${pending} settlement(s) pending from before restart — resolved on the payer's next retry`);
   log(`listen  ${PUBLIC}  (GET /notarize?hash=0x… · POST /mcp)`);
 });

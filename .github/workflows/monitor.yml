@@ -1,0 +1,20 @@
+# Checks the public seller like a customer would, every 3 hours. Free: it never pays.
+# A failed run emails the repo owner. Edit the cron to change the cadence (each run bills
+# ~1 Actions minute: 8/day ≈ 240 min/month of the free private-repo allowance).
+name: monitor
+on:
+  schedule:
+    - cron: "23 */3 * * *"
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  seller:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node monitor.mjs https://poa-x402-seller.fly.dev

@@ -1,0 +1,12 @@
+# Monthly PRs for dependency updates. Review, merge, then `fly deploy --ha=false` (see RUNBOOK).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: monthly }
+  - package-ecosystem: docker
+    directory: /
+    schedule: { interval: monthly }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: monthly }
