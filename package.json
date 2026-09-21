@@ -10,5 +10,5 @@
     "keygen": "node seller-keygen.mjs",
     "test": "node test-seller.mjs"
   },
-  "dependencies": { "viem": "2.56.5" }
+  "dependencies": { "viem": "2.56.8" }
 }
