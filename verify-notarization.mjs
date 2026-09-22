@@ -19,7 +19,10 @@ import { stable, rpc, CHAIN_ID } from './seller-lib.mjs';
 
 const src = process.argv[2];
 const raw = src ? readFileSync(src, 'utf8') : await new Promise((r) => { let s = ''; process.stdin.on('data', (d) => (s += d)).on('end', () => r(s)); });
-const { digest, serverSig, ...body } = JSON.parse(raw);
+// `payment` is not part of what the notary signed: it's the record a paying wallet (wallet-mcp)
+// attaches to the result it hands its model. Set aside, like digest and serverSig.
+const { digest, serverSig, payment, ...body } = JSON.parse(raw);
+void payment;
 
 let bad = 0;
 const check = (ok, name, detail) => { if (!ok) bad++; console.log(`  ${ok ? '✅' : '❌'} ${name}${detail ? `  (${detail})` : ''}`); };
