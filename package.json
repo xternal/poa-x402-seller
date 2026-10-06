@@ -4,11 +4,33 @@
   "private": true,
   "description": "An x402-gated paid tool server (HTTP + MCP) on POA chain 77. Self-settles to the precompile; no facilitator, no account, one key.",
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "node seller.mjs",
     "keygen": "node seller-keygen.mjs",
     "test": "node test-seller.mjs"
   },
-  "dependencies": { "viem": "2.56.5" }
+  "dependencies": {
+    "viem": "2.56.5"
+  },
+  "license": "MIT",
+  "author": "Pavel Guzhikov (https://guzh.uk)",
+  "homepage": "https://poa-x402-seller.fly.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xternal/poa-x402-seller.git"
+  },
+  "keywords": [
+    "x402",
+    "mcp",
+    "ai-agents",
+    "agentic-payments",
+    "micropayments",
+    "usdc",
+    "eip-3009",
+    "http-402",
+    "poa"
+  ]
 }

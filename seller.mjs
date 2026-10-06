@@ -245,9 +245,154 @@ async function mcp(req, res, m, url) {
   res.end(JSON.stringify({ jsonrpc: '2.0', id: m.id ?? null, error: { code: -32601, message: `unknown method ${m.method}` } }));
 }
 
+// ---------- the public face ----------
+// The paid endpoints answer machines. These answer people and crawlers: a public service should be
+// findable and legible, and an agent reading robots.txt or llms.txt should learn what this costs
+// without paying to find out. Static, no chain calls, never rate-limited.
+let OG = null;
+try { OG = readFileSync('og.png'); } catch { /* not shipped in this build */ }
+
+const page = (base, priceUsdc, payTo) => `<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A tollbooth for AI agents — pay-per-call tool server on POA</title>
+<meta name="description" content="A web service that charges ${priceUsdc} USDC per call over HTTP 402 / x402, settles the payment itself, and needs no account or API key. Live, open source, MIT.">
+<link rel="canonical" href="${base}/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="${base}/">
+<meta property="og:title" content="A tollbooth for AI agents">
+<meta property="og:description" content="${priceUsdc} USDC per call over HTTP 402. Payment is the authentication: no account, no API key, no invoice.">
+<meta property="og:image" content="${base}/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="A tollbooth for AI agents">
+<meta name="twitter:description" content="${priceUsdc} USDC per call over HTTP 402. Payment is the authentication.">
+<meta name="twitter:image" content="${base}/og.png">
+<script type="application/ld+json">${JSON.stringify({
+  '@context': 'https://schema.org', '@type': 'SoftwareApplication',
+  name: 'poa-x402-seller', url: `${base}/`, applicationCategory: 'DeveloperApplication',
+  description: `A pay-per-call tool server on POA chain 77. Charges ${priceUsdc} USDC per request over HTTP 402 (x402) and settles the payment itself.`,
+  operatingSystem: 'Any', license: 'https://opensource.org/licenses/MIT',
+  codeRepository: 'https://github.com/xternal/poa-x402-seller',
+  author: { '@type': 'Person', name: 'Pavel Guzhikov', url: 'https://guzh.uk' },
+  offers: { '@type': 'Offer', price: String(priceUsdc), priceCurrency: 'USDC' },
+})}</script>
+<style>
+  :root { color-scheme: dark light; --bg:#0b0f16; --fg:#e8eef4; --muted:#93a4b5; --accent:#3ddc97; --line:#1e2938; }
+  @media (prefers-color-scheme: light) { :root { --bg:#fbfcfd; --fg:#12181f; --muted:#5a6b7c; --accent:#0a7f52; --line:#dde5ec; } }
+  body { background:var(--bg); color:var(--fg); font:16px/1.65 ui-sans-serif,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; margin:0; padding:48px 20px; }
+  main { max-width:44rem; margin:0 auto; }
+  h1 { font-size:2.1rem; line-height:1.15; margin:0 0 .3em; letter-spacing:-.02em; }
+  h2 { font-size:1.1rem; margin:2.2em 0 .6em; }
+  code, pre { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.9em; }
+  pre { background:color-mix(in srgb, var(--fg) 7%, transparent); padding:14px 16px; border-radius:10px; overflow-x:auto; border:1px solid var(--line); }
+  .lede { font-size:1.15rem; color:var(--fg); }
+  .muted { color:var(--muted); }
+  a { color:var(--accent); }
+  table { border-collapse:collapse; width:100%; margin:.5em 0 0; }
+  td,th { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); font-size:.95rem; vertical-align:top; }
+  footer { margin-top:3em; padding-top:1.2em; border-top:1px solid var(--line); color:var(--muted); font-size:.92rem; }
+</style>
+<main>
+  <p class="muted"><code>HTTP/2 402 Payment Required</code></p>
+  <h1>A tollbooth for AI agents</h1>
+  <p class="lede">This service charges <strong>${priceUsdc} USDC per call</strong>, settles the payment itself, and asks nobody for an account. Payment is the authentication: no signup, no API key, no invoice.</p>
+
+  <h2>How it works</h2>
+  <ol>
+    <li>You request a paid endpoint. It answers <code>402</code> with a price quote in a <code>PAYMENT-REQUIRED</code> header.</li>
+    <li>You sign a payment authorisation for exactly that quote and retry the same request with a <code>PAYMENT-SIGNATURE</code> header.</li>
+    <li>This server submits your payment to POA chain 77 itself, waits for it to be final — about two seconds — and then serves the result.</li>
+  </ol>
+
+  <h2>The tool</h2>
+  <p><code>notarize(hash)</code> anchors a 32-byte hash to a POA block and signs the result, so anyone can later check that the hash existed by that block. Available over plain HTTP and as an MCP tool.</p>
+  <table>
+    <tr><th>Price</th><td>${priceUsdc} USDC per call (native USDC on POA chain 77, <code>eip155:77</code>)</td></tr>
+    <tr><th>Paid</th><td><code>GET /notarize?hash=0x…</code> · <code>POST /mcp</code> (<code>tools/call</code>)</td></tr>
+    <tr><th>Free</th><td><code>GET /health</code> · <code>GET /livez</code> · MCP <code>initialize</code> and <code>tools/list</code></td></tr>
+    <tr><th>Paid to</th><td><code>${payTo}</code></td></tr>
+  </table>
+
+  <h2>See the price without paying</h2>
+  <pre>curl -si ${base}/notarize | head -1
+curl -s  ${base}/health</pre>
+
+  <h2>Questions</h2>
+  <p><strong>Do I need an account?</strong> No. There is nothing to sign up for. The only thing this server checks is that a valid payment for its own quote has settled.</p>
+  <p><strong>What stops someone paying once and calling forever?</strong> Each payment authorisation buys exactly one call: it is pinned to the request it paid for, and a repeat of the same request returns the same result rather than charging again.</p>
+  <p><strong>What if the payment settles but the answer never arrives?</strong> The settlement is written down before it is broadcast. Retry the identical request and you get what you paid for; you are never charged twice.</p>
+  <p><strong>Can I run my own?</strong> Yes — it is MIT licensed, about 230 lines, and needs one key and an RPC URL. <a href="https://github.com/xternal/poa-x402-seller">Source on GitHub</a>.</p>
+
+  <footer>
+    Built by <a href="https://guzh.uk">Pavel Guzhikov</a> · <a href="https://github.com/xternal/poa-x402-seller">source</a> ·
+    <a href="https://ko-fi.com/pavelg">buy me a coffee</a> · <a href="${base}/llms.txt">llms.txt</a>
+  </footer>
+</main>
+`;
+
+const ROBOTS = (base) => `# Everything here is public. Crawlers and AI agents are welcome.
+User-agent: *
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+Sitemap: ${base}/sitemap.xml
+`;
+
+const SITEMAP = (base) => `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>${base}/</loc><changefreq>monthly</changefreq><priority>1.0</priority></url>
+</urlset>
+`;
+
+const LLMS = (base, priceUsdc, payTo) => `# poa-x402-seller
+
+> A pay-per-call tool server on POA chain 77. It charges ${priceUsdc} USDC per request using x402
+> (HTTP 402 Payment Required) and settles the payment itself, with no facilitator, account or API key.
+
+## What you can buy
+- notarize(hash): anchors a 32-byte hash to a POA block and returns it signed by the notary, as
+  proof the hash existed by that block. Price ${priceUsdc} USDC per call, paid to ${payTo}.
+
+## How to pay (for an agent)
+1. GET ${base}/notarize?hash=0x<64 hex>. You receive HTTP 402 and a quote, base64 JSON, in the
+   PAYMENT-REQUIRED header: amount (6-decimal atomic units), asset, payTo, maxTimeoutSeconds.
+2. Sign an EIP-3009 TransferWithAuthorization for exactly that quote. EIP-712 domain: name USDC,
+   version 2, chainId 77, verifyingContract 0x2d00000000000000000000000000000000000006.
+3. Retry the same request with a PAYMENT-SIGNATURE header: base64 of
+   {x402Version:2, resource, accepted, payload:{signature, authorization}}.
+4. You get 200 with the result, and the settlement transaction in the PAYMENT-RESPONSE header.
+   One authorisation buys one call; an identical retry returns the same result and is not charged twice.
+   If the answer is 402 settlement_pending, resend the same header — the payment may already be on-chain.
+
+## MCP
+POST ${base}/mcp speaks MCP over Streamable HTTP. initialize and tools/list are free; tools/call is paid
+with the same PAYMENT-SIGNATURE header.
+
+## Free endpoints
+${base}/health (chain height, payee, price, sales), ${base}/livez (liveness).
+
+## Source and licence
+https://github.com/xternal/poa-x402-seller — MIT. Author: Pavel Guzhikov, https://guzh.uk
+`;
+
 // ---------- HTTP ----------
 // The URL clients reach, quoted in resource.url (never an internal origin — B6). On Fly it
 // follows the app name, so renaming the app can't leave the seller quoting a stale URL.
+const PRICE_USDC = Number(PRICE) / 10 ** ATOMIC_DECIMALS;
 const PUBLIC = env('SELLER_PUBLIC_URL',
   process.env.FLY_APP_NAME ? `https://${process.env.FLY_APP_NAME}.fly.dev` : `http://localhost:${PORT}`);
 
@@ -277,6 +422,11 @@ const server = createServer(async (req, res) => {
     // Liveness only — no chain calls, so a POA deploy window can't make the host think this
     // process is broken and restart it mid-settlement.
     if (u.pathname === '/livez') return json(res, 200, { ok: true });
+    const serve = (type, body, maxAge = 3600) => { res.writeHead(200, { 'content-type': type, 'cache-control': `public, max-age=${maxAge}`, 'x-content-type-options': 'nosniff' }); res.end(body); };
+    if (u.pathname === '/robots.txt') return serve('text/plain; charset=utf-8', ROBOTS(PUBLIC));
+    if (u.pathname === '/sitemap.xml') return serve('application/xml; charset=utf-8', SITEMAP(PUBLIC));
+    if (u.pathname === '/llms.txt') return serve('text/plain; charset=utf-8', LLMS(PUBLIC, PRICE_USDC, account.address));
+    if (u.pathname === '/og.png' && OG) return serve('image/png', OG, 86400);
     const wait = throttled(req);
     if (wait) { res.writeHead(429, { 'content-type': 'application/json', 'Retry-After': String(wait) });
       return res.end(JSON.stringify({ error: 'rate_limited', retryAfterSeconds: wait })); }
@@ -300,6 +450,10 @@ const server = createServer(async (req, res) => {
       }
     }
 
+    // A browser gets the page; anything else — curl, an agent, a crawler asking for JSON — gets the
+    // same JSON as before, so nothing that already reads this endpoint breaks.
+    if (u.pathname === '/' && /text\/html/.test(req.headers.accept ?? '') && !u.searchParams.has('json'))
+      return serve('text/html; charset=utf-8', page(PUBLIC, PRICE_USDC, account.address), 300);
     if (u.pathname === '/' ) return json(res, 200, { service: 'poa-x402-notary',
       price: `${Number(PRICE) / 10 ** ATOMIC_DECIMALS} USDC per call`, network: `eip155:${CHAIN_ID}`, payTo: account.address,
       paid: { http: `${PUBLIC}/notarize?hash=0x…`, mcp: `${PUBLIC}/mcp` },

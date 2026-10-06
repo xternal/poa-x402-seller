@@ -5,7 +5,7 @@
 | Live | https://poa-x402-seller.fly.dev |
 | Fly | app `poa-x402-seller` · org `personal` · region `lhr` · **one** machine · volume `seller_data` → `/data` |
 | payTo | `0xdC6C7F3dcEC8Ac75d3656bfD697a693acEB38244` (`seller.address`) |
-| Key | Fly secret `SELLER_PRIVATE_KEY` (write-only) · laptop `.env.fly` · backup `~/Documents/poa-seller-fly-key-backup.env` |
+| Key | Fly secret `SELLER_PRIVATE_KEY` (write-only) · local `.env.fly` (gitignored) · one backup outside the repo |
 | Monitor | `.github/workflows/monitor.yml`, every 3 h — a failure emails you |
 | Durable record | `/data/seller-ledger.json`, `/data/seller-receipts.jsonl` · volume snapshots daily, kept 14 days |
 
@@ -52,7 +52,7 @@ for f in seller.mjs seller-lib.mjs seller-keygen.mjs verify-notarization.mjs tes
 fly ssh sftp get /data/seller-receipts.jsonl ./fly-receipts.jsonl -a poa-x402-seller
 fly ssh sftp get /data/seller-ledger.json    ./fly-ledger.json    -a poa-x402-seller
 node ../poa/verify.mjs fly-receipts.jsonl                    # every receipt's hash + signature
-fly volumes snapshots list vol_vjy36jngnlq1yxov -a poa-x402-seller
+fly volumes snapshots list <volume id> -a poa-x402-seller   # id from: fly volumes list
 ```
 
 **Restoring a snapshot** brings back an older ledger. Payments settled after the snapshot are still
