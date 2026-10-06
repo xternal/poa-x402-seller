@@ -73,6 +73,13 @@ up: `https://poa.net/77/tx/<tx>`. Mined `0x1` → we were paid; the next retry o
 serve it — if the payer is someone you know, tell them to resend. No receipt and the authorization's
 `validBefore` has passed → it can never land; nothing was paid.
 
+**A site complains about our fetcher.** Our user agent identifies us and links `/llms.txt`, so
+complaints should arrive rather than silent blocks. `premium_fetch` already honours `robots.txt` for
+our agent and never follows a redirect into a private address. To exclude a host entirely, add it to
+`BLOCKED_HOST` in `seller.mjs` and deploy; to slow the fetcher down, lower `SELLER_RATE_PER_MIN`. If
+someone is paying to aim us at a target, every call is in `seller-receipts.jsonl` with the URL — that
+is the audit trail to answer with.
+
 **Rate-limit complaints.** Raise `SELLER_RATE_PER_MIN` in `fly.toml`, deploy. It exists to stop the
 seller being used to flood POA's public RPC; keep it finite.
 

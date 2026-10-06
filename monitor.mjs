@@ -69,11 +69,23 @@ await check('unpaid call gets an honest quote (HTTP 402)', async () => {
   return `${a.amount} atomic → ${a.payTo.slice(0, 10)}…`;
 });
 
+await check('the fetch tool quotes its own price, and refuses a private URL for free', async () => {
+  const q = await get(`/fetch?url=${encodeURIComponent('https://example.com')}`);
+  must(q.status === 402, `expected 402, got ${q.status}`);
+  const a = JSON.parse(Buffer.from(q.headers.get('payment-required') ?? '', 'base64').toString()).accepts?.[0] ?? {};
+  must(a.amount === (process.env.EXPECT_FETCH_PRICE_ATOMIC ?? '2000'), `fetch quote is ${a.amount}, expected ${process.env.EXPECT_FETCH_PRICE_ATOMIC ?? '2000'}`);
+  // The guard that keeps a paid fetcher from becoming an open proxy, checked from outside.
+  const blocked = await get(`/fetch?url=${encodeURIComponent('http://169.254.169.254/latest/meta-data/')}`);
+  const body = await blocked.json().catch(() => ({}));
+  must(blocked.status === 400 && body.charged === false, `metadata URL answered ${blocked.status} ${JSON.stringify(body).slice(0, 80)}`);
+  return `${a.amount} atomic · private URL refused with ${blocked.status}, not charged`;
+});
+
 await check('MCP endpoint lists the paid tool', async () => {
   const r = await get('/mcp', { method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
   const tools = (await r.json()).result?.tools?.map((t) => t.name) ?? [];
-  must(tools.includes('notarize'), `tools/list returned ${JSON.stringify(tools)}`);
+  must(tools.includes('notarize') && tools.includes('premium_fetch'), `tools/list returned ${JSON.stringify(tools)}`);
   return tools.join(', ');
 });
 

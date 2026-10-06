@@ -1,10 +1,10 @@
 # A tollbooth for AI agents
 
-A web service that charges **0.001 USDC per call**, settles the payment itself, and asks nobody for
-an account. It is running right now:
+A web service that sells two tools **from 0.001 USDC per call**, settles each payment itself, and asks
+nobody for an account. It is running right now:
 
 [![live](https://img.shields.io/website?url=https%3A%2F%2Fpoa-x402-seller.fly.dev%2Flivez&label=poa-x402-seller.fly.dev&up_message=live&down_message=waking%20up)](https://poa-x402-seller.fly.dev/health)
-![price](https://img.shields.io/badge/price-0.001%20USDC%20per%20call-blue)
+![price](https://img.shields.io/badge/price-from%200.001%20USDC%20per%20call-blue)
 ![settles](https://img.shields.io/badge/settlement-self--settled%2C%20no%20facilitator-success)
 [![coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-ko--fi-FF5E5B)](https://ko-fi.com/pavelg)
 
@@ -79,8 +79,17 @@ here, or bridge in through the POA dApp.
 
 ## What you buy
 
-One tool, deliberately dull, so the payment is the interesting part. **`notarize(hash)`** anchors a
-32-byte hash to a POA block and signs the result:
+Two tools. Both sell the same underlying thing: a statement signed by this server and anchored to a
+POA block, so you get something you can cite rather than something to take on trust.
+
+| tool | price | |
+|---|---|---|
+| `notarize(hash)` | 0.001 USDC | the hash existed by this block |
+| `premium_fetch(url)` | 0.002 USDC | this URL answered this, with this body, by this block |
+
+### notarize
+
+**`notarize(hash)`** anchors a 32-byte hash to a POA block and signs the result:
 
 ```json
 {
@@ -95,6 +104,36 @@ One tool, deliberately dull, so the payment is the interesting part. **`notarize
 Proof that the hash existed by that block, checkable by anyone:
 `node verify-notarization.mjs proof.json` recomputes the digest, recovers the notary, and confirms the
 block hash against the chain.
+
+### premium_fetch
+
+**`premium_fetch(url)`** fetches a public URL and signs what it said — status, final URL after
+redirects, content type, the sha256 of the **whole** body, and a text extract:
+
+```bash
+curl -s "https://poa-x402-seller.fly.dev/fetch?url=https://example.com"   # 402 + a 0.002 USDC quote
+```
+
+```json
+{
+  "type": "poa.fetch-attestation", "url": "https://example.com",
+  "finalUrl": "https://example.com", "redirects": [], "httpStatus": 200,
+  "contentType": "text/html; charset=utf-8", "bytes": 577, "truncated": false,
+  "sha256": "0x25ddf2c8…", "text": "Example Domain\nThis domain is for use in…",
+  "poaBlock": 1342263, "poaBlockHash": "0x…", "digest": "0x…", "serverSig": "0x…"
+}
+```
+
+An agent gets more than the page: it gets a record it can hand to someone else. "This URL said this,
+at this block" survives the page changing, and the same verifier checks it. The text extract is inside
+the signature, so neither we nor you can quietly edit it afterwards.
+
+**It is not an open proxy, and that took most of the work.** `http`/`https` only; no credentials in
+the URL; every DNS answer checked against private, loopback, link-local and cloud-metadata ranges, and
+every redirect hop checked again; `GET` only; none of your headers forwarded; response size and time
+capped; `robots.txt` honoured for our own user agent. The URL is validated **before** payment — a
+blocked one returns `400` and costs nothing, because charging for an answer we were never going to
+give is just theft with extra steps.
 
 ## How one payment flows
 
@@ -143,6 +182,7 @@ We got all five wrong first. They are why this is more than a demo.
 | `seller-lib.mjs` | quoting, binding checks, settlement calldata, signed receipts |
 | `pay.mjs` | one-file buyer, only needs `viem` |
 | `test-seller.mjs` | 23 live checks — every way we could think of to walk past the paywall |
+| `test-fetch.mjs` | 24 live checks on `premium_fetch`: every way to turn it into a proxy, and who pays when it refuses |
 | `monitor.mjs` | what a customer sees: honest quote, right payee, right price, chain alive |
 | `verify-notarization.mjs` | check a proof you bought, against the chain |
 | `seller-keygen.mjs` | mint the seller's key; it only ever receives |
@@ -164,8 +204,10 @@ Deploying to Fly.io is five commands, about $0.15 a month for the disk and near 
 idle — see [RUNBOOK.md](RUNBOOK.md). Run exactly one machine: the ledger that makes retries safe is a
 file on its volume.
 
-Main settings: `SELLER_PRICE_ATOMIC` (1000 = 0.001 USDC), `SELLER_MAX_TIMEOUT`,
-`SELLER_RATE_PER_MIN`, `SELLER_PUBLIC_URL`. Full table in the runbook.
+Main settings: `SELLER_PRICE_ATOMIC` (1000 = 0.001 USDC), `SELLER_PRICE_FETCH_ATOMIC` (2000),
+`SELLER_MAX_TIMEOUT`, `SELLER_RATE_PER_MIN`, `SELLER_PUBLIC_URL`, and the fetch limits
+`SELLER_FETCH_MAX_BYTES` / `SELLER_FETCH_TIMEOUT_MS` / `SELLER_FETCH_MAX_REDIRECTS`. Full table in
+the runbook.
 
 ## Known limits
 
@@ -177,6 +219,9 @@ Main settings: `SELLER_PRICE_ATOMIC` (1000 = 0.001 USDC), `SELLER_MAX_TIMEOUT`,
 - **A settled authorisation is public**, in the settlement transaction's calldata. Until it expires,
   anyone who also knows the exact request can fetch the cached result. Harmless for `notarize`; a tool
   that sells data should cache briefly or not at all.
+- **A fetch attestation says what we received, not whether it was true.** The page could be lying, or
+  serving us something different from what it serves you. What it proves is that this server asked that
+  URL at that block and got exactly this body.
 - **Settlements run one at a time.** On this chain a failed transaction does not consume its nonce, so
   concurrent settlements can strand each other. Fine at this scale, not at a thousand calls a second.
 - The buyer side — an agent wallet that pays under a signed spending mandate with per-call caps, a
