@@ -6,7 +6,7 @@ nobody for an account. It is running right now:
 [![live](https://img.shields.io/website?url=https%3A%2F%2Fpoa-x402-seller.fly.dev%2Flivez&label=poa-x402-seller.fly.dev&up_message=live&down_message=waking%20up)](https://poa-x402-seller.fly.dev/health)
 ![price](https://img.shields.io/badge/price-from%200.001%20USDC%20per%20call-blue)
 ![settles](https://img.shields.io/badge/settlement-self--settled%2C%20no%20facilitator-success)
-[![coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-ko--fi-FF5E5B)](https://ko-fi.com/pavelg)
+[![matcha](https://img.shields.io/badge/buy%20me%20a%20matcha-ko--fi-7BA05B)](https://ko-fi.com/pavelg)
 
 ```console
 $ curl -si https://poa-x402-seller.fly.dev/notarize | head -1
@@ -227,7 +227,7 @@ the runbook.
 - The buyer side — an agent wallet that pays under a signed spending mandate with per-call caps, a
   counterparty allowlist and a kill switch — lives in a private repo. Ask if you want a look.
 
-## Buy me a coffee
+## Buy me a matcha
 
 If this saved you a weekend, or you just like that HTTP 402 finally does something:
 **[ko-fi.com/pavelg](https://ko-fi.com/pavelg)**. Tips in USDC on POA work too, obviously —

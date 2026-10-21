@@ -506,7 +506,7 @@ curl -s  ${base}/health</pre>
 
   <footer>
     Built by <a href="https://guzh.uk">Pavel Guzhikov</a> · <a href="https://github.com/xternal/poa-x402-seller">source</a> ·
-    <a href="https://ko-fi.com/pavelg">buy me a coffee</a> · <a href="${base}/llms.txt">llms.txt</a>
+    <a href="https://ko-fi.com/pavelg">buy me a matcha</a> · <a href="${base}/llms.txt">llms.txt</a>
   </footer>
 </main>
 `;
